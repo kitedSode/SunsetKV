@@ -82,7 +82,6 @@ func (rf *Raft) GetState() (int, bool) {
 
 	var term int
 	var isleader bool
-	// Your code here (2A).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -154,10 +153,7 @@ func (rf *Raft) readPersist(data []byte) {
 
 }
 
-//
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
-//
+// RequestVoteArgs 选举参数
 type RequestVoteArgs struct {
 	Term         int // 候选人的任期号(候选人的currentTerm + 1)
 	CandidateId  int // 请求选票的候选人的 Id
@@ -165,18 +161,12 @@ type RequestVoteArgs struct {
 	LastLogTerm  int // 候选人最后日志条目的任期号
 }
 
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
 type RequestVoteReply struct {
 	Term        int  // 当前任期号，以便于候选人去更新自己的任期号
 	VoteGranted bool // 候选人赢得了此张选票时为真
 }
 
-//
-// example RequestVote RPC handler.
-//
+// RequestVote 选举函数
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
