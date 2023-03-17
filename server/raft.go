@@ -39,9 +39,6 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
-//
-// A Go object implementing a single Raft peer.
-//
 type Raft struct {
 	mu        sync.Mutex // Lock to protect shared access to this peer's state
 	peers     []*Peer    // RPC end points of all peers
@@ -81,8 +78,6 @@ type LogEntry struct {
 	Term         int         // 存储日志时的任期号
 }
 
-// return currentTerm and whether this server
-// believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
 
 	var term int
@@ -100,12 +95,6 @@ func (rf *Raft) GetState() (int, bool) {
 
 	return term, isleader
 }
-
-//
-// save Raft's persistent state to stable storage,
-// where it can later be retrieved after a crash and restart.
-// see paper's Figure 2 for a description of what should be persistent.
-//
 
 // GetRaftStateSize 返回raft的持久化数据的大小给server
 func (rf *Raft) GetRaftStateSize() int {
@@ -170,7 +159,6 @@ func (rf *Raft) readPersist(data []byte) {
 // field names must start with capital letters!
 //
 type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
 	Term         int // 候选人的任期号(候选人的currentTerm + 1)
 	CandidateId  int // 请求选票的候选人的 Id
 	LastLogIndex int // 候选人的最后日志条目的索引值
@@ -182,7 +170,6 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	// Your data here (2A).
 	Term        int  // 当前任期号，以便于候选人去更新自己的任期号
 	VoteGranted bool // 候选人赢得了此张选票时为真
 }
@@ -191,7 +178,6 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
-	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	//fmt.Printf("server[%d][Term: %d] receive voteRequest from server[%d][Term: %d]\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
@@ -667,17 +653,8 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	return nil
 }
 
-// the service says it has created a snapshot that has
-// all info up to and including index. this means the
-// service no longer needs the logs through (and including)
-// that index. Raft should now trim its logs as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (2D).
-	//rf.mu.Lock()
-	//start := time.Now()
-	//defer rf.mu.Unlock()
 
-	//fmt.Println(666)
 	//fmt.Printf("server[%d] exec Snapshot and index = %d, rf.commitIndex = %d, len(rf.logs) = %d, rf.lastIncludedIndex = %d\n",
 	//	rf.me, index, rf.commitIndex, len(rf.logs), rf.lastIncludedIndex)
 	rf.mu.Lock()
@@ -801,20 +778,6 @@ func (rf *Raft) InstallSnapshot(args InstallSnapshotArgs, reply *InstallSnapshot
 	return nil
 }
 
-//
-// the service using Raft (e.g. a k/v server) wants to start
-// agreement on the next command to be appended to Raft's logs. if this
-// server isn't the leader, returns false. otherwise start the
-// agreement and return immediately. there is no guarantee that this
-// command will ever be committed to the Raft logs, since the leader
-// may fail or lose an election. even if the Raft instance has been killed,
-// this function should return gracefully.
-//
-// the first return value is the index that the command will appear at
-// if it's ever committed. the second return value is the current
-// term. the third return value is true if this server believes it is
-// the leader.
-//
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
@@ -845,21 +808,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return index, term, isLeader
 }
 
-//
-// the tester doesn't halt goroutines created by Raft after each test,
-// but it does call the Kill() method. your code can use killed() to
-// check whether Kill() has been called. the use of atomic avoids the
-// need for a lock.
-//
-// the issue is that long-running goroutines use memory and may chew
-// up CPU time, perhaps causing later tests to fail and generating
-// confusing debug output. any goroutine with a long-running loop
-// should call killed() to check whether it should stop.
-//
 func (rf *Raft) Kill() {
 	//fmt.Println("Kill", rf.me)
 	atomic.StoreInt32(&rf.dead, 1)
-	// Your code here, if desired.
 }
 
 func (rf *Raft) killed() bool {
@@ -876,7 +827,6 @@ func (rf *Raft) goTicker() {
 }
 
 func (rf *Raft) electionTicker() {
-	//var i int32
 	for !rf.killed() {
 		startTime := time.Now()
 		time.Sleep(rf.electionTime)
