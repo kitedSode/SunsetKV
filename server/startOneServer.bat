@@ -1,0 +1,1 @@
+server.exe %1
