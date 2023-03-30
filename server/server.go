@@ -2,6 +2,7 @@ package main
 
 import (
 	"SunsetKV/common"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,11 +41,25 @@ type Response struct {
 	value  string
 }
 
+type Op struct {
+	// Your definitions here.
+	// Field names must start with capital letters,
+	// otherwise RPC will break.
+	SeqId   int
+	ClerkId int64
+	Key     string
+	Value   string
+	Api     string
+}
+
 func (kvs *KVServer) Ping(args common.GetArgs, reply *common.GetReply) error {
+	fmt.Printf("reveive from client[%d]'s ping![%s]\n", args.ClerkId, args.Key)
+	reply.Value = "ok!"
 	return nil
 }
 
 func StartKVServer(id int) {
+	gob.Register(Op{})
 	kvs := new(KVServer)
 	kvs.me = id
 	kvs.maxraftstate = 1024
@@ -115,6 +130,20 @@ func StartKVServer(id int) {
 
 }
 
+func (kvs *KVServer) kill() {
+	kvs.rf.Kill()
+	kvs.mu.Lock()
+	for ch := range kvs.waitChans {
+		close(kvs.waitChans[ch])
+	}
+	kvs.waitChans = nil
+	//kv.waitChans = nil
+	kvs.kvMap = nil
+	kvs.clerkSeqId = nil
+	kvs.mu.Unlock()
+
+}
+
 func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill, syscall.SIGHUP,
@@ -127,4 +156,5 @@ func main() {
 
 	StartKVServer(id)
 	<-sig
+
 }

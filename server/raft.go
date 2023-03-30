@@ -32,7 +32,6 @@ type ApplyMsg struct {
 	Command      interface{}
 	CommandIndex int
 
-	// For 2D:
 	SnapshotValid bool
 	Snapshot      []byte
 	SnapshotTerm  int
@@ -64,6 +63,7 @@ type Raft struct {
 	electionTime time.Duration // 在给定时间内如果没有收到leader的心跳则触发选举操作
 	heartbeat    time.Time     // 最新收到心跳信息时的时间
 	votesNum     int           // 用以统计选举的票数，每次选举前更改为1
+	conn         net.Conn      // 用于rpc的tcp连接
 
 	applyCh chan ApplyMsg // 将日志应用到状态机的channel
 
@@ -159,6 +159,7 @@ type RequestVoteArgs struct {
 	CandidateId  int // 请求选票的候选人的 Id
 	LastLogIndex int // 候选人的最后日志条目的索引值
 	LastLogTerm  int // 候选人最后日志条目的任期号
+	More         int
 }
 
 type RequestVoteReply struct {
@@ -170,6 +171,7 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	//fmt.Printf("server[%d] receive vote for args: %v\n", rf.me, args)
 	//fmt.Printf("server[%d][Term: %d] receive voteRequest from server[%d][Term: %d]\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 	if rf.killed() {
 		//reply.VoteState = VoteKilled
@@ -279,10 +281,11 @@ func (rf *Raft) execElection() {
 			CandidateId:  rf.me,
 			LastLogIndex: lastLogIndex,
 			LastLogTerm:  lastLogTerm,
+			More:         i,
 		}
-
 		reply := RequestVoteReply{}
 		go func(server int) {
+
 			if !rf.sendRequestVote(server, args, &reply) {
 				return
 			}
@@ -524,6 +527,7 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
 		rf.votedFor = args.LeaderId
+		fmt.Println("yes!")
 		changed = true
 	}
 
@@ -773,7 +777,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	term := -1
 	isLeader := true
 
-	// Your code here (2B).
 	if rf.killed() {
 		return index, term, false
 	}
@@ -800,6 +803,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 func (rf *Raft) Kill() {
 	//fmt.Println("Kill", rf.me)
+	rf.conn.Close()
 	atomic.StoreInt32(&rf.dead, 1)
 }
 
@@ -823,6 +827,7 @@ func (rf *Raft) electionTicker() {
 
 		rf.mu.Lock()
 		if rf.status != Leader && rf.heartbeat.Before(startTime) {
+			//fmt.Printf("election, newest heartbeat is %v, and now is %v\n", rf.heartbeat, time.Now())
 			rf.execElection()
 		}
 
@@ -895,12 +900,41 @@ func (rf *Raft) renewHeartbeat() {
 	rf.heartbeat = time.Now()
 }
 
+type ConnArgs struct {
+	ID int
+}
+
+type ConnReply struct {
+	OK bool
+}
+
+// Connect 用于连接新的rpc服务器（也可用于重置）
+func (rf *Raft) Connect(args ConnArgs, reply *ConnReply) error {
+	//fmt.Printf("args: %v\n", args)
+	//fmt.Printf("rf[%d] recevive new connect [%d]\n", rf.me, args.ID)
+	//fmt.Println("rf-peers:", rf.peers)
+	for len(rf.peers) == 0 || rf.peers[args.ID] == nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	//if rf.peers[args.ID].adder != args.Addr {
+	//	rf.peers[args.ID].adder = args.Addr
+	//}
+	rf.peers[args.ID].ReConnect()
+	reply.OK = true
+	return nil
+}
+
+func (rf *Raft) Ping(args byte, reply *byte) error {
+	return nil
+}
+
 func MakeRaftServer(peersAddr []string, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	//fmt.Printf("server[%d] create!\n", me)
 	rf := &Raft{}
 	rf.mu = sync.Mutex{}
 	rf.mu.Lock()
+	rf.dead = 1
 
 	// 为raftServer添加rpc服务
 	err := rpc.Register(rf)
@@ -918,6 +952,7 @@ func MakeRaftServer(peersAddr []string, me int,
 				log.Fatalln(err)
 			}
 
+			//fmt.Println(client.RemoteAddr())
 			go rpc.ServeConn(client)
 		}
 	}()
@@ -925,7 +960,6 @@ func MakeRaftServer(peersAddr []string, me int,
 	rf.persister = persister
 	rf.me = me
 
-	// Your initialization code here (2A, 2B, 2C).
 	rf.applyCh = applyCh
 	rf.currentTerm = 0
 	rf.votedFor = -1
@@ -942,15 +976,19 @@ func MakeRaftServer(peersAddr []string, me int,
 	rf.status = Follower
 
 	rf.setElectionTime()
-	rf.heartbeat = time.Now()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 	// 连接其他raftServer服务器
 	rf.peers = MakePeer(peersAddr, me)
+	PeersCreateConnect(rf.peers, rf.me)
+	time.Sleep(2 * time.Second)
+	rf.heartbeat = time.Now()
+	rf.dead = 0
 	rf.mu.Unlock()
 	fmt.Printf("RaftServer [%d] is running!\n", me)
+
 	//fmt.Printf("server[%d] restart and it's commitIndex = %d\n", me, rf.commitIndex)
 	// start ticker goroutine to start elections
 	rf.goTicker()
