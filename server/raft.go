@@ -63,7 +63,7 @@ type Raft struct {
 	electionTime time.Duration // 在给定时间内如果没有收到leader的心跳则触发选举操作
 	heartbeat    time.Time     // 最新收到心跳信息时的时间
 	votesNum     int           // 用以统计选举的票数，每次选举前更改为1
-	conn         net.Conn      // 用于rpc的tcp连接
+	conn         net.Listener  // 用于rpc的tcp连接
 
 	applyCh chan ApplyMsg // 将日志应用到状态机的channel
 
@@ -797,7 +797,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = rf.getLastLogIndex()
 
 	rf.persist()
-	//fmt.Printf("leader[%d][Term :%d] receive command{%v} and len(log) = %d, commitIndex = %d, index = %d\n", rf.me, rf.currentTerm, command, rf.getLastLogIndex(), rf.commitIndex, index)	//xqc
+	//fmt.Printf("leader[%d][Term :%d] receive command{%v} and len(log) = %d, commitIndex = %d, index = %d\n", rf.me, rf.currentTerm, command, rf.getLastLogIndex(), rf.commitIndex, index) //xqc
 	return index, term, isLeader
 }
 
@@ -959,6 +959,7 @@ func MakeRaftServer(peersAddr []string, me int,
 
 	rf.persister = persister
 	rf.me = me
+	rf.conn = conn
 
 	rf.applyCh = applyCh
 	rf.currentTerm = 0

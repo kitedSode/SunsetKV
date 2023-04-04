@@ -2,6 +2,7 @@ package main
 
 import (
 	"SunsetKV/common"
+	"bytes"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -22,18 +24,14 @@ type KVServer struct {
 	me      int
 	rf      *Raft
 	applyCh chan ApplyMsg
-	dead    int32 // set by Kill()
 
 	maxraftstate int // snapshot if log grows this big
 
-	// Your definitions here.
 	kvMap             map[string]string
 	clerkSeqId        map[int64]int         // 记录每个clerk最新执行的seqId
 	waitChans         map[int]chan Response // 任务完成时告知server
 	lastIncludedIndex int                   // 最后执行快照的index
 	commitIndex       int                   // 记录commit的index
-
-	data map[int]string
 }
 
 type Response struct {
@@ -42,9 +40,6 @@ type Response struct {
 }
 
 type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
 	SeqId   int
 	ClerkId int64
 	Key     string
@@ -52,18 +47,267 @@ type Op struct {
 	Api     string
 }
 
-func (kvs *KVServer) Ping(args common.GetArgs, reply *common.GetReply) error {
-	fmt.Printf("reveive from client[%d]'s ping![%s]\n", args.ClerkId, args.Key)
-	reply.Value = "ok!"
+func (kv *KVServer) Get(args common.GetArgs, reply *common.GetReply) error {
+
+	if _, isLeader := kv.rf.GetState(); !isLeader {
+		reply.Err = common.ErrWrongLeader
+		return nil
+	}
+
+	//fmt.Println("receive Get")
+
+	//kv.mu.Lock()
+	command := Op{
+		SeqId:   args.SeqId,
+		ClerkId: args.ClerkId,
+		Key:     args.Key,
+		Api:     "Get",
+	}
+	//fmt.Println("client command:", command)
+	index, _, isLeader := kv.rf.Start(command)
+	//fmt.Println("server start a command...")
+	//kv.mu.Unlock()
+
+	kv.mu.Lock()
+	if !isLeader {
+		reply.Err = common.ErrWrongLeader
+		kv.mu.Unlock()
+		return nil
+	}
+	ch := kv.getWaitChan(index)
+	kv.mu.Unlock()
+	defer func() {
+		kv.mu.Lock()
+		delete(kv.waitChans, index)
+		kv.mu.Unlock()
+		//delete(kv.waitChans, index)
+	}()
+
+	select {
+	case resp := <-ch:
+		reply.Err = resp.errMsg
+		reply.Value = resp.value
+	case <-time.After(100 * time.Millisecond):
+		reply.Err = common.ErrWrongLeader
+		//fmt.Println("outTime...")
+	}
+
 	return nil
 }
 
-func StartKVServer(id int) {
+func (kv *KVServer) PutAppend(args common.PutAppendArgs, reply *common.PutAppendReply) error {
+	//fmt.Println("server exec putAppend")
+	kv.mu.Lock()
+	if kv.isExpired(args.ClerkId, args.SeqId) {
+		reply.Err = common.OK
+		//fmt.Println("expired...")
+		kv.mu.Unlock()
+		return nil
+	}
+	kv.mu.Unlock()
+
+	if _, isLeader := kv.rf.GetState(); !isLeader {
+		//fmt.Println("I'm not leader, leader is:", kv.rf.votedFor)
+		reply.Err = common.ErrWrongLeader
+		return nil
+	}
+
+	//fmt.Println("receive Put")
+	command := Op{
+		SeqId:   args.SeqId,
+		ClerkId: args.ClerkId,
+		Key:     args.Key,
+		Value:   args.Value,
+		Api:     args.Op,
+	}
+	//fmt.Println("client command:", command)
+	index, _, ok := kv.rf.Start(command)
+	//fmt.Println("server start a command...")
+
+	kv.mu.Lock()
+	if !ok {
+		reply.Err = common.ErrWrongLeader
+		kv.mu.Unlock()
+		return nil
+	}
+
+	ch := kv.getWaitChan(index)
+	kv.mu.Unlock()
+	defer func() {
+		kv.mu.Lock()
+		delete(kv.waitChans, index)
+		kv.mu.Unlock()
+	}()
+
+	select {
+	case resp := <-ch:
+		reply.Err = resp.errMsg
+	case <-time.After(100 * time.Millisecond):
+		//fmt.Println("timeout...")
+		reply.Err = common.ErrWrongLeader
+	}
+
+	return nil
+}
+
+func (kv *KVServer) getWaitChan(index int) chan Response {
+	if ch, exist := kv.waitChans[index]; exist {
+		return ch
+	}
+
+	kv.waitChans[index] = make(chan Response, 1)
+	return kv.waitChans[index]
+}
+
+func (kv *KVServer) isExpired(clerkId int64, seqId int) bool {
+	return seqId <= kv.clerkSeqId[clerkId]
+}
+
+func (kv *KVServer) applier() {
+	for msg := range kv.applyCh {
+		//fmt.Println("applier receive msg:", msg.Command)
+		if msg.CommandValid {
+			kv.mu.Lock()
+			if msg.CommandIndex <= kv.lastIncludedIndex {
+				kv.mu.Unlock()
+				//r := fmt.Sprintf("server[%d] msg: %d, kv: %d, rf: %d\n",kv.me, msg.CommandIndex, kv.lastIncludedIndex, kv.rf.GetCommitIndex())
+				//panic(r)
+				return
+			}
+
+			//if msg.CommandIndex != kv.lastIncludedIndex + 1{
+			//	fmt.Printf("newest index is %d, but kv.commitIndex is %d\n", msg.CommandIndex, kv.lastIncludedIndex)
+			//}
+
+			//if msg.CommandIndex != kv.commitIndex + 1{
+			//	fmt.Printf("newest index is %d, but kv.commitIndex is %d\n", msg.CommandIndex, kv.lastIncludedIndex)
+			//}
+
+			//kv.commitIndex ++
+
+			op := msg.Command.(Op)
+			//fmt.Println("apply command:", op)
+			//fmt.Println("commandIndex:",  msg.CommandIndex)
+
+			// 如果该条命令不是Get并且符合线性一致性的话则给予执行
+			resp := Response{errMsg: common.OK}
+			if op.Api == "Get" {
+				if v, exist := kv.kvMap[op.Key]; exist {
+					resp.value = v
+				} else {
+					resp.errMsg = common.ErrNoKey
+				}
+			} else if !kv.isExpired(op.ClerkId, op.SeqId) {
+				switch op.Api {
+				case "Put":
+					kv.kvMap[op.Key] = op.Value
+					//fmt.Printf("Server: %d [Key: %s, Value: %s]\n", kv.me, op.Key, kv.kvMap[op.Key])
+				case "Append":
+					kv.kvMap[op.Key] += op.Value
+					//fmt.Printf("Server: %d [Key: %s, Value: %s]\n", kv.me, op.Key, kv.kvMap[op.Key])
+					//fmt.Printf("Server: %d key: %s append: %s\n", kv.me, op.Key, op.Value)
+				}
+				kv.clerkSeqId[op.ClerkId] = op.SeqId
+			} else {
+				resp.errMsg = common.ErrExpired
+				//fmt.Printf("seqId[%d], key: %s, value: %s is Expired!\n", op.SeqId, op.Key, op.Value)
+			}
+
+			kv.lastIncludedIndex = msg.CommandIndex
+			// 如果raft存储的日志数据超过了server给定的maxraftstate的话向raft发送快照
+			if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() >= kv.maxraftstate {
+				kv.rf.Snapshot(kv.lastIncludedIndex, kv.getPersistData())
+			}
+			// 如果对应的raft服务器不是leader的话则不用发送
+			if _, ok := kv.rf.GetState(); !ok {
+				kv.mu.Unlock()
+				continue
+			}
+			ch := kv.getWaitChan(msg.CommandIndex)
+			kv.mu.Unlock()
+
+			ch <- resp
+		}
+
+		if msg.SnapshotValid {
+
+			kv.mu.Lock()
+			if msg.SnapshotIndex <= kv.lastIncludedIndex {
+				kv.mu.Unlock()
+				//r := fmt.Sprintf("server[%d] msg: %d, kv: %d, rf: %d\n",kv.me, msg.SnapshotIndex, kv.lastIncludedIndex, kv.rf.GetCommitIndex())
+				//panic(r)
+				return
+			}
+
+			kv.readPersist(msg.Snapshot)
+			kv.lastIncludedIndex = msg.SnapshotIndex
+			kv.mu.Unlock()
+		}
+	}
+}
+
+// 将kvMap以及clerkSeqId做持久化操作
+func (kv *KVServer) getPersistData() []byte {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	encoder.Encode(kv.kvMap)
+	encoder.Encode(kv.clerkSeqId)
+	return w.Bytes()
+}
+
+// 读取由raft传来的快照来恢复之前的数据
+func (kv *KVServer) readPersist(data []byte) {
+	if data == nil || len(data) < 1 { // bootstrap without any state?
+		return
+	}
+
+	r := bytes.NewBuffer(data)
+	d := gob.NewDecoder(r)
+
+	kvMap := make(map[string]string)
+	clerkSeqId := make(map[int64]int)
+
+	err := d.Decode(&kvMap)
+	if err != nil {
+		panic(err)
+	}
+
+	err = d.Decode(&clerkSeqId)
+	if err != nil {
+		panic(err)
+	}
+
+	//if d.Decode(kvMap) != nil d.Decode(clerkSeqId) != nil{
+	//	//panic("decode err!")
+	//}else{
+	kv.kvMap = kvMap
+	kv.clerkSeqId = clerkSeqId
+	//}
+}
+
+func (kvs *KVServer) Ping(args common.PingArgs, reply *common.PingReply) error {
+	//fmt.Printf("reveive from client[%d]'s ping![%s]\n", args.ClerkId, args.Msg)
+	_, isLeader := kvs.rf.GetState()
+	if isLeader {
+		//reply.Msg = fmt.Sprintf("server for [%d]:yes, I'm leader!", kvs.me)
+		reply.LeaderId = kvs.me
+	} else {
+		//reply.Msg = fmt.Sprintf("server for [%d]:sorry, I'm not leader.Leader is %d", kvs.me, kvs.rf.votedFor)
+		reply.LeaderId = kvs.rf.votedFor
+	}
+
+	return nil
+}
+
+func StartKVServer(id int) *KVServer {
 	gob.Register(Op{})
 	kvs := new(KVServer)
 	kvs.me = id
-	kvs.maxraftstate = 1024
+	kvs.maxraftstate = 2048
 	kvs.applyCh = make(chan ApplyMsg)
+	kvs.waitChans = make(map[int]chan Response)
+	kvs.clerkSeqId = make(map[int64]int)
+	kvs.kvMap = make(map[string]string)
 
 	// 读取配置文件，得到每一个KVServer以及RaftServer的IP
 	file, err := os.Open("config.json")
@@ -127,7 +371,8 @@ func StartKVServer(id int) {
 	}()
 
 	fmt.Printf("KVServer [%d] is running!\n", id)
-
+	go kvs.applier()
+	return kvs
 }
 
 func (kvs *KVServer) kill() {
@@ -137,7 +382,6 @@ func (kvs *KVServer) kill() {
 		close(kvs.waitChans[ch])
 	}
 	kvs.waitChans = nil
-	//kv.waitChans = nil
 	kvs.kvMap = nil
 	kvs.clerkSeqId = nil
 	kvs.mu.Unlock()
@@ -154,7 +398,8 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	StartKVServer(id)
+	kvs := StartKVServer(id)
+	defer kvs.kill()
 	<-sig
 
 }
