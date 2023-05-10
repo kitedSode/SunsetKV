@@ -447,7 +447,6 @@ func (rf *Raft) execAppendEntries() {
 				//}
 
 				if len(arg.Entries) == 0 || reply.ExceptedNextIndex < rf.nextIndex[server] {
-					//fmt.Println("fuck")
 					//if reply.ExceptedNextIndex < rf.nextIndex[server]{
 					//	panic("really!!!!!!!!!!")
 					//}
@@ -791,7 +790,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	if rf.status != Leader {
 		return index, term, false
 	}
-
 	term = rf.currentTerm
 	rf.logs = append(rf.logs, LogEntry{Instructions: command, Term: term})
 	index = rf.getLastLogIndex()

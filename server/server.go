@@ -345,7 +345,7 @@ func StartKVServer(id int) *KVServer {
 		raftIP = append(raftIP, *(*[]byte)(unsafe.Pointer(&servers[i].RaftPort))...)
 		raftServersIP[i] = *(*string)(unsafe.Pointer(&raftIP))
 	}
-	//TODO 暂时先临时创建一个后期再考虑持久化
+
 	ps := MakePersister()
 
 	kvs.rf = MakeRaftServer(raftServersIP, kvs.me, ps, kvs.applyCh)

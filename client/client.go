@@ -2,6 +2,7 @@ package main
 
 import (
 	"SunsetKV/common"
+	"bufio"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,10 @@ import (
 	rand2 "math/rand"
 	"net/rpc"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -71,11 +75,71 @@ func main() {
 	}
 
 	clerk := MakeClerk(serversIP)
+	defer clerk.rpcServer.Close()
 
-	clerk.rpcServer.Close()
+	time.Sleep(time.Second)
+	var flag bool
+	if runtime.GOOS == "windows" {
+		flag = true
+	}
+	rd := bufio.NewReader(os.Stdin)
+	for true {
+		fmt.Print("user>")
+
+		msg, _ := rd.ReadString('\n')
+		if flag {
+			msg = msg[:len(msg)-2]
+		} else {
+			msg = msg[:len(msg)-1]
+		}
+		words := strings.Fields(msg)
+		if len(words) == 0 {
+			fmt.Println("len(command) can't be 0 ")
+			continue
+		}
+
+		switch words[0] {
+		case "get":
+			if len(words) != 2 {
+				commandErr()
+				continue
+			}
+			value, getErr := clerk.Get(words[1])
+			if getErr != nil {
+				fmt.Println(getErr)
+				continue
+			}
+			fmt.Println(value)
+		case "put":
+			if len(words) != 3 {
+				commandErr()
+				continue
+			}
+			putErr := clerk.Put(words[1], words[2])
+			if putErr != nil {
+				fmt.Println(putErr)
+				continue
+			}
+			fmt.Printf("key[%s]'s value is %s\n", words[1], words[2])
+		case "quit":
+			return
+		case "help":
+			fmt.Println("[Command: get(to get the value)]get key\n" +
+				"[Command: put(to put the value in the key)]put key value\n" +
+				"[Command: quit]quit")
+			continue
+		default:
+			commandErr()
+			continue
+		}
+	}
 }
 
-func (ck *Clerk) Get(key string) string {
+func commandErr() {
+	fmt.Println("unknown command, You can use the help to see how the command works")
+}
+
+func (ck *Clerk) Get(key string) (string, error) {
 
 	// You will have to modify this function.
 
@@ -95,10 +159,11 @@ func (ck *Clerk) Get(key string) string {
 		} else {
 			switch reply.Err {
 			case common.OK:
-				//fmt.Printf("client[%d] get from [server: %d] get key: %s, value: %s\n",ck.clerkId, ck.leaderId, key, reply.Value)
-				return reply.Value
+				//fmt.Printf("client[%d] get from [server: %d] get key: %s, value: %s\n", ck.clerkId, ck.leaderId, key, reply.Value)
+				return reply.Value, nil
 			case common.ErrNoKey:
-				return ""
+				//fmt.Println("get key error")
+				return "", errors.New(common.ErrNoKey)
 			case common.ErrWrongLeader:
 				ck.mu.Lock()
 				fmt.Println("leader err, change rpc")
@@ -108,20 +173,10 @@ func (ck *Clerk) Get(key string) string {
 		}
 	}
 
-	return ""
+	return "", nil
 }
 
-//
-// shared by Put and Append.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
-//
-func (ck *Clerk) PutAppend(key string, value string, op string) {
+func (ck *Clerk) PutAppend(key string, value string, op string) error {
 	// You will have to modify this function.
 	ck.mu.Lock()
 	ck.seqId++
@@ -139,10 +194,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		} else {
 			switch reply.Err {
 			case common.OK:
-				return
+				return nil
 			case common.ErrExpired:
-				fmt.Printf("client[%d]' [SeqId: %d][key: %s, value: %s] is Expired, api: %s\n", ck.clerkId, args.SeqId, key, value, op)
-				return
+				errMsg := fmt.Sprintf("client[%d]' [SeqId: %d][key: %s, value: %s] is Expired, api: %s\n", ck.clerkId, args.SeqId, key, value, op)
+				return errors.New(errMsg)
 			case common.ErrWrongLeader:
 				ck.mu.Lock()
 				fmt.Println("leader err, change rpc.", reply.Err)
@@ -151,10 +206,12 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			}
 		}
 	}
+
+	return nil
 }
 
-func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
+func (ck *Clerk) Put(key string, value string) error {
+	return ck.PutAppend(key, value, "Put")
 }
 func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "Append")
