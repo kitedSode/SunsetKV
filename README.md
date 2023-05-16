@@ -1,5 +1,5 @@
 # SunsetKV
-
+## 项目介绍
 SunsetKV是一个稳定、高性能、轻量级的分布式KV存储系统。采用Raft协议作为分布式协议来保障系统的一致性与容灾
 性。该系统具有以下特点
 1. 主从结构：Raft协议采用主从（Leader-Follower）结构，其中一个节点被选举为主节点，负责协调整个集群的工作。其
@@ -12,6 +12,7 @@ SunsetKV是一个稳定、高性能、轻量级的分布式KV存储系统。采�
    就从“follower”状态转换成“leader”状态，而其他节点则从“follower”状态转换成“leader”状态。
 5. 线性一致性：服务端对于所有客户端发送的指令的执行顺序都要符合线性时间的顺序（全局时间）。
 
-raft.go: 实现节点的raft协议交互
-server.go: 每个server绑定一个raft服务，负责处理数据的处理
-client.go: 客户端
+## 主要文件
+1. raft.go: 实现节点的raft协议交互
+2. server.go: 每个server绑定一个raft服务，负责数据的处理
+3. client.go: 客户端
