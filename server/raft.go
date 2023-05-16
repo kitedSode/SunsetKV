@@ -67,10 +67,8 @@ type Raft struct {
 
 	applyCh chan ApplyMsg // 将日志应用到状态机的channel
 
-	lastIncludedIndex int
-	lastIncludedTerm  int
-
-	electionTimes int
+	lastIncludedIndex int // 快照最后应用到的日志索引
+	lastIncludedTerm  int // 快照最后应用到的日志term
 }
 
 type LogEntry struct {
@@ -269,7 +267,6 @@ func (rf *Raft) execElection() {
 	//fmt.Printf("server[%d][Term :%d] execElection and lastLogIndex is %d, lastLogTerm is %d\n", rf.me, rf.currentTerm, rf.getLastLogIndex(), lastLogTerm)
 	//fmt.Printf("server[%d][Term :%d] execElection and lastLogIndex is %d, lastLogTerm is %d, len_log is %d\n", rf.me, rf.currentTerm, rf.getLastLogIndex(), lastLogTerm, len(rf.logs))
 	rf.setElectionTime()
-	rf.electionTimes++
 	//fmt.Fprintf(os.Stdout, "server[%d] execElection and currentTerm is %d, electionTimes is %d, status is %d, time is %v\n",
 	//	rf.me, rf.currentTerm, rf.electionTimes, rf.status, time.Now())
 	for i := 0; i < len(rf.peers); i++ {

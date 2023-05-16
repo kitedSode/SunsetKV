@@ -21,13 +21,13 @@ import (
 
 type KVServer struct {
 	mu      sync.Mutex
-	me      int
-	rf      *Raft
-	applyCh chan ApplyMsg
+	me      int           // 记录当前节点的id
+	rf      *Raft         // raft服务
+	applyCh chan ApplyMsg // 接收raft服务提交的日志
 
-	maxraftstate int // snapshot if log grows this big
-
-	kvMap             map[string]string
+	maxraftstate int //若raft服务存储的日志数据大小超过了该数值，则
+	//使用快照代替。快照中存储是KVServer中最新的Key-Value
+	kvMap             map[string]string     // 记录Key-Value
 	clerkSeqId        map[int64]int         // 记录每个clerk最新执行的seqId
 	waitChans         map[int]chan Response // 任务完成时告知server
 	lastIncludedIndex int                   // 最后执行快照的index
