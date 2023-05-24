@@ -36,11 +36,7 @@ func MakeClerk(serversIP []string) *Clerk {
 	max := big.NewInt(int64(1) << 62)
 	bigx, _ := rand.Int(rand.Reader, max)
 	ck.clerkId = bigx.Int64()
-
-	//TODO:leaderId = 0
 	ck.leaderId = rand2.Intn(len(serversIP))
-	ck.leaderId = 2
-
 	ck.mu = new(sync.Mutex)
 	ck.serversIP = serversIP
 
