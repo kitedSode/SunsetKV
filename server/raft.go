@@ -478,12 +478,12 @@ func (rf *Raft) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply)
 
 	if rf.status != Follower {
 		rf.status = Follower
+		rf.votedFor = args.LeaderId
 	}
 
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
 		rf.votedFor = args.LeaderId
-		fmt.Println("yes!")
 		changed = true
 	}
 
@@ -948,6 +948,13 @@ func MakeRaftServer(peersAddr []string, me int,
 	//fmt.Printf("server[%d] restart and it's commitIndex = %d\n", me, rf.commitIndex)
 	// start ticker goroutine to start elections
 	rf.goTicker()
+
+	//go func() {
+	//	for i := 0; i < 10; i++ {
+	//		time.Sleep(5 * time.Second)
+	//		fmt.Printf("server[%d]'s leader is %d\n", rf.me, rf.votedFor)
+	//	}
+	//}()
 
 	return rf
 }

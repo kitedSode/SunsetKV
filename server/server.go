@@ -290,10 +290,10 @@ func (kvs *KVServer) Ping(args common.PingArgs, reply *common.PingReply) error {
 	_, isLeader := kvs.rf.GetState()
 	if isLeader {
 		//reply.Msg = fmt.Sprintf("server for [%d]:yes, I'm leader!", kvs.me)
-		reply.LeaderId = kvs.me
+		reply.IsLeader = true
 	} else {
 		//reply.Msg = fmt.Sprintf("server for [%d]:sorry, I'm not leader.Leader is %d", kvs.me, kvs.rf.votedFor)
-		reply.LeaderId = kvs.rf.votedFor
+		reply.IsLeader = false
 	}
 
 	return nil

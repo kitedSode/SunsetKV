@@ -35,10 +35,8 @@ type GetReply struct {
 
 type PingArgs struct {
 	ClerkId int64
-	Msg     string
 }
 
 type PingReply struct {
-	Msg      string
-	LeaderId int
+	IsLeader bool
 }

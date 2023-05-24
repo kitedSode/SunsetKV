@@ -36,7 +36,11 @@ func MakeClerk(serversIP []string) *Clerk {
 	max := big.NewInt(int64(1) << 62)
 	bigx, _ := rand.Int(rand.Reader, max)
 	ck.clerkId = bigx.Int64()
+
+	//TODO:leaderId = 0
 	ck.leaderId = rand2.Intn(len(serversIP))
+	ck.leaderId = 2
+
 	ck.mu = new(sync.Mutex)
 	ck.serversIP = serversIP
 
@@ -166,7 +170,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 				return "", errors.New(common.ErrNoKey)
 			case common.ErrWrongLeader:
 				ck.mu.Lock()
-				fmt.Println("leader err, change rpc")
+				fmt.Println("leader err, change rpc", ck.leaderId)
 				ck.getNewRpcServer(true)
 				ck.mu.Unlock()
 			}
@@ -222,22 +226,7 @@ func (clerk *Clerk) getNewRpcServer(isConnected bool) {
 
 	// 如果连接还可以使用则询问当前的leaderID
 	if isConnected {
-		args := common.PingArgs{
-			ClerkId: clerk.clerkId,
-			Msg:     "hi",
-		}
-
-		reply := new(common.PingReply)
-		err := clerk.rpcServer.Call("KVServer.Ping", args, reply)
-		if err != nil {
-			clerk.rpcServer.Close()
-		} else {
-			if clerk.leaderId == reply.LeaderId {
-				return
-			}
-			clerk.leaderId = reply.LeaderId - 1
-			clerk.rpcServer.Close()
-		}
+		clerk.rpcServer.Close()
 	}
 
 	err := errors.New("connect error")
@@ -248,7 +237,6 @@ func (clerk *Clerk) getNewRpcServer(isConnected bool) {
 
 		args := common.PingArgs{
 			ClerkId: clerk.clerkId,
-			Msg:     "hi",
 		}
 
 		reply := new(common.PingReply)
@@ -256,12 +244,11 @@ func (clerk *Clerk) getNewRpcServer(isConnected bool) {
 		if err != nil {
 			rs.Close()
 		} else {
-			if clerk.leaderId == reply.LeaderId {
-				fmt.Printf("Get correct leader: %d\n", reply.LeaderId)
+			if reply.IsLeader {
+				//fmt.Printf("Get correct leader: %d\n", clerk.leaderId)
 				clerk.rpcServer = rs
 				return
 			} else {
-				clerk.leaderId = reply.LeaderId - 1
 				rs.Close()
 				err = errors.New("error leader")
 			}
