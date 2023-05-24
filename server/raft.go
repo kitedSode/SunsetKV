@@ -157,7 +157,6 @@ type RequestVoteArgs struct {
 	CandidateId  int // 请求选票的候选人的 Id
 	LastLogIndex int // 候选人的最后日志条目的索引值
 	LastLogTerm  int // 候选人最后日志条目的任期号
-	More         int
 }
 
 type RequestVoteReply struct {
@@ -193,20 +192,11 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error
 	lastLogIndex := rf.getLastLogIndex()
 	lastLogTerm := rf.getLogTermByIndex(lastLogIndex)
 
-	if args.Term < rf.currentTerm || args.LastLogTerm < lastLogTerm || (args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex) {
+	if args.Term < rf.currentTerm ||
+		args.LastLogTerm < lastLogTerm ||
+		(args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex) {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		//if len_log > 0 {
-		//	fmt.Printf("server[%d][Term: %d][LastLogTerm: %d][LastLogIndex: %d] refuse to vote for server[%d][Term: %d][LastLogTerm: %d][LastLogIndex: %d]\n",
-		//		rf.me, rf.currentTerm, rf.logs[len_log-1].Term, len_log, args.CandidateId, args.Term, args.LastLogTerm, args.LastLogIndex)
-		//} else {
-		//	fmt.Printf("server[%d][Term: %d] refuse to vote for server[%d][Term: %d]\n",
-		//		rf.me, rf.currentTerm, args.CandidateId, args.Term)
-		//}
-
-		//fmt.Printf("server[%d][Term: %d] refuse to vote for server[%d][Term: %d]\n",
-		//	rf.me, rf.currentTerm, args.CandidateId, args.Term)
-
 		return nil
 	}
 
@@ -225,34 +215,6 @@ func (rf *Raft) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error
 		reply.VoteGranted = false
 	}
 
-	//if args.Term > rf.currentTerm {
-	//
-	//	//if args.CommitIndex < rf.commitIndex {
-	//	//	fmt.Printf("vote err! server[%d][Term: %d][LastLogTerm: %d][CommitIndex: %d][Len_log: %d] votefor server[%d][Term: %d][LastLogTerm: %d][CommitIndex: %d][Len_log: %d]\n",
-	//	//		rf.me, rf.currentTerm, lastLogTerm, rf.commitIndex, len(rf.logs), args.CandidateId, args.Term, args.LastLogTerm, args.CommitIndex, args.LastLogIndex)
-	//	//}
-	//	//fmt.Printf("server[%d][Term: %d] votedfor [%d][Term: %d]\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
-	//	rf.status = Follower
-	//	rf.votedFor = args.CandidateId
-	//	rf.votesNum = 0
-	//	rf.currentTerm = args.Term
-	//	reply.VoteGranted = true
-	//	reply.Term = rf.currentTerm
-	//	rf.persist()
-	//	rf.renewHeartbeat()
-	//} else {
-	//	//if rf.status == Leader {
-	//		//fmt.Printf("leader[%d][Term: %d] refuse to vote for server[%d][Term: %d]\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
-	//	//}
-	//
-	//	reply.Term = rf.currentTerm
-	//	// 已经给对方投过票了
-	//	if rf.votedFor == args.CandidateId {
-	//		rf.status = Follower
-	//		reply.VoteGranted = true
-	//		rf.renewHeartbeat()
-	//	}
-	//}
 	return nil
 }
 
@@ -278,7 +240,6 @@ func (rf *Raft) execElection() {
 			CandidateId:  rf.me,
 			LastLogIndex: lastLogIndex,
 			LastLogTerm:  lastLogTerm,
-			More:         i,
 		}
 		reply := RequestVoteReply{}
 		go func(server int) {
@@ -385,7 +346,6 @@ func (rf *Raft) execAppendEntries() {
 			//time := time.Now()
 			//fmt.Printf("leader[%d]'s lastIncludedIndex is %d and commitIndex is %d, but server[%d]'s is %d\n",
 			//	rf.me, rf.lastIncludedIndex, rf.commitIndex, i, prevLogIndex)
-			//TODO: send snapshot
 			args := InstallSnapshotArgs{
 				Term:              rf.currentTerm,
 				LeaderId:          rf.me,
