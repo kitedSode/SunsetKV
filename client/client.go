@@ -99,6 +99,18 @@ func main() {
 		}
 
 		switch words[0] {
+		case "test_read":
+			start := time.Now()
+			for i := 0; i < 1000; i++ {
+				clerk.Get("name")
+			}
+			fmt.Println("spend time:", time.Since(start).Milliseconds())
+		case "test_write":
+			start := time.Now()
+			for i := 0; i < 1000; i++ {
+				clerk.Put("name", "Tom")
+			}
+			fmt.Println("spend time:", time.Since(start).Milliseconds())
 		case "get":
 			if len(words) != 2 {
 				commandErr()
@@ -153,7 +165,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 		err := ck.rpcServer.Call("KVServer.Get", args, &reply)
 		if err != nil {
 			ck.mu.Lock()
-			fmt.Println("connect err, change rpc")
+			//fmt.Println("connect err, change rpc")
 			ck.getNewRpcServer(false)
 			ck.mu.Unlock()
 		} else {
@@ -166,7 +178,7 @@ func (ck *Clerk) Get(key string) (string, error) {
 				return "", errors.New(common.ErrNoKey)
 			case common.ErrWrongLeader:
 				ck.mu.Lock()
-				fmt.Println("leader err, change rpc", ck.leaderId)
+				//fmt.Println("leader err, change rpc", ck.leaderId)
 				ck.getNewRpcServer(true)
 				ck.mu.Unlock()
 			}
@@ -188,7 +200,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) error {
 		err := ck.rpcServer.Call("KVServer.PutAppend", args, &reply)
 		if err != nil {
 			ck.mu.Lock()
-			fmt.Println("connect err, change rpc.", err)
+			//fmt.Println("connect err, change rpc.", err)
 			ck.getNewRpcServer(false)
 			ck.mu.Unlock()
 		} else {
@@ -200,7 +212,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) error {
 				return errors.New(errMsg)
 			case common.ErrWrongLeader:
 				ck.mu.Lock()
-				fmt.Println("leader err, change rpc.", reply.Err)
+				//fmt.Println("leader err, change rpc.", reply.Err)
 				ck.getNewRpcServer(true)
 				ck.mu.Unlock()
 			}
@@ -230,6 +242,9 @@ func (clerk *Clerk) getNewRpcServer(isConnected bool) {
 	for err != nil {
 		clerk.leaderId = (clerk.leaderId + 1) % len(clerk.serversIP)
 		rs, err = rpc.Dial("tcp", clerk.serversIP[clerk.leaderId])
+		if err != nil {
+			continue
+		}
 
 		args := common.PingArgs{
 			ClerkId: clerk.clerkId,

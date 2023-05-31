@@ -782,7 +782,7 @@ func (rf *Raft) electionTicker() {
 
 		rf.mu.Lock()
 		if rf.status != Leader && rf.heartbeat.Before(startTime) {
-			//fmt.Printf("election, newest heartbeat is %v, and now is %v\n", rf.heartbeat, time.Now())
+			// 定时器超时，执行选举操作
 			rf.execElection()
 		}
 

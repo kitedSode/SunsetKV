@@ -57,6 +57,7 @@ func (kv *KVServer) Get(args common.GetArgs, reply *common.GetReply) error {
 	//fmt.Println("receive Get")
 
 	//kv.mu.Lock()
+	// 将请求进行封装
 	command := Op{
 		SeqId:   args.SeqId,
 		ClerkId: args.ClerkId,
@@ -69,11 +70,14 @@ func (kv *KVServer) Get(args common.GetArgs, reply *common.GetReply) error {
 	//kv.mu.Unlock()
 
 	kv.mu.Lock()
+	// 如果raft节点不是leader则拒绝处理
 	if !isLeader {
 		reply.Err = common.ErrWrongLeader
 		kv.mu.Unlock()
 		return nil
 	}
+
+	// 获取结果返回通道
 	ch := kv.getWaitChan(index)
 	kv.mu.Unlock()
 	defer func() {
@@ -87,7 +91,7 @@ func (kv *KVServer) Get(args common.GetArgs, reply *common.GetReply) error {
 	case resp := <-ch:
 		reply.Err = resp.errMsg
 		reply.Value = resp.value
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond): // 超时则拒绝处理
 		reply.Err = common.ErrWrongLeader
 		//fmt.Println("outTime...")
 	}
